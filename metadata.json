@@ -1,0 +1,6 @@
+{
+  "name": "Hitotoki",
+  "description": "A premium cinematic Japanese life-experience landing page exploring silent, slow living and immersive stay experiences.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
