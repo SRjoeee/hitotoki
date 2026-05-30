@@ -19,7 +19,16 @@ export default function VideoLayer({ activeSceneId, scrollProgressRef }: VideoLa
     if (!container || !video) return;
 
     // We do not autoPlay. We rely on the requestAnimationFrame loop to scrub `currentTime`.
-    video.load();
+    // Explicitly play and pause once to ensure the browser unlocks the video decoding pipeline
+    const unlockVideo = async () => {
+      try {
+        await video.play();
+        video.pause();
+      } catch (e) {
+        // Autoplay might be blocked, that's fine for scrubbing
+      }
+    };
+    unlockVideo();
 
     // 1. Setup ThreeJS Scene
     const scene = new THREE.Scene();
@@ -33,11 +42,15 @@ export default function VideoLayer({ activeSceneId, scrollProgressRef }: VideoLa
     container.appendChild(renderer.domElement);
 
     // 2. Video Texture & Shader Material
-    const videoTexture = new THREE.VideoTexture(video);
+    // Use standard Texture instead of VideoTexture. 
+    // VideoTexture relies on requestVideoFrameCallback which stops firing when video is paused.
+    // By using Texture and manually setting needsUpdate = true, we force WebGL to upload the scrubbed frame.
+    const videoTexture = new THREE.Texture(video);
     videoTexture.minFilter = THREE.LinearFilter;
     videoTexture.magFilter = THREE.LinearFilter;
     videoTexture.format = THREE.RGBAFormat;
     videoTexture.colorSpace = THREE.SRGBColorSpace;
+    videoTexture.generateMipmaps = false;
 
     // Custom Shader to apply the cinematic color grading
     const material = new THREE.ShaderMaterial({
@@ -156,6 +169,9 @@ export default function VideoLayer({ activeSceneId, scrollProgressRef }: VideoLa
 
       if (video.readyState >= 2) { // HAVE_CURRENT_DATA
         video.currentTime = currentVideoTimeRef.current;
+        // IMPORTANT: Tell Three.js that the video texture needs to be updated 
+        // every frame we scrub, otherwise it stays black/frozen
+        videoTexture.needsUpdate = true;
       }
 
       renderer.render(scene, camera);
@@ -178,16 +194,18 @@ export default function VideoLayer({ activeSceneId, scrollProgressRef }: VideoLa
 
   return (
     <div id="video-layer-outer" className="absolute inset-0 w-full h-full pointer-events-none overflow-hidden bg-[#050608] z-0">
-      {/* Hidden video element to drive the WebGL texture */}
+      {/* Visually hidden video element to drive the WebGL texture. 
+          Using opacity 0.001 and full size ensures the browser's compositor 
+          doesn't pause hardware decoding (which happens on opacity 0 or display:none). */}
       <video
         ref={videoRef}
-        className="hidden"
+        className="fixed top-0 left-0 w-full h-full -z-50 opacity-[0.001] pointer-events-none"
         playsInline
         muted
         preload="auto"
       >
-        <source src="/videos/demo.webm" type="video/webm" />
-        <source src="/videos/demo.mp4" type="video/mp4" />
+        <source src={`${import.meta.env.BASE_URL}videos/demo.webm`} type="video/webm" />
+        <source src={`${import.meta.env.BASE_URL}videos/demo.mp4`} type="video/mp4" />
       </video>
       
       {/* WebGL Canvas Mount Point */}
